@@ -1,0 +1,66 @@
+# Traefik HelmChart - K3s 内部 Ingress Controller
+#
+# 端口说明:
+#   - 标准部署（6台服务器）: 8080
+#   - 单机部署: 8083（:80 被 infra-nginx 占用，Apollo 已迁移至 8601+）
+#
+# 流量链路:
+#   外部流量 → svclb :8083 → Traefik Service → Traefik Pod :8000 → Pod
+#
+# 注意事项:
+#   1. Traefik 以非 root 运行，容器内端口必须 >= 1024（使用 8000）
+#   2. 不要配置 hostPort，让 K3s svclb 自动处理外部流量
+#   3. 端口在 deployment-topology.md 中预先规划，避免运行时冲突
+#
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  chart: traefik
+  repo: https://helm.traefik.io/traefik
+  targetNamespace: traefik
+  valuesContent: |-
+    # LoadBalancer 类型，K3s 会自动创建 svclb 监听 hostPort
+    service:
+      type: LoadBalancer
+
+    # 端口配置
+    # - 容器内端口 8000（Traefik 以非 root 运行，无法绑定 1024 以下）
+    # - exposedPort 8083（单机部署，:80 被 infra-nginx 占用）
+    # - 如需修改端口，同步更新 deployment-topology.md 中的端口规划
+    ports:
+      web:
+        port: 8000
+        exposedPort: 8083
+      websecure:
+        port: 8443
+        exposedPort: 8443
+
+    # 容忍 master 节点污点（单节点必须）
+    tolerations:
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+
+    # 资源限制
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+
+    # 日志级别
+    additionalArguments:
+      - "--log.level=INFO"
+
+    # 禁用 Dashboard（安全）
+    ingressRoute:
+      dashboard:
+        enabled: false

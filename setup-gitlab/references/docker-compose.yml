@@ -1,0 +1,35 @@
+services:
+  gitlab:
+    image: gitlab/gitlab-ee:17.8.0-ee.0
+    container_name: tech-gitlab
+    restart: unless-stopped
+    hostname: ${GITLAB_HOSTNAME:-gitlab.renew.com}
+    # 所有配置在 ./config/gitlab.rb 中管理，不使用环境变量
+    environment: []
+    ports:
+      - "${GITLAB_HTTP_PORT:-8929}:80"
+      - "${GITLAB_SSH_PORT:-2222}:22"
+    volumes:
+      - ./config:/etc/gitlab
+      - ./logs:/var/log/gitlab
+      - ./data:/var/opt/gitlab
+      - ./license/license_key.pub:/opt/gitlab/embedded/service/gitlab-rails/.license_encryption_key.pub:ro
+    shm_size: '256m'
+    healthcheck:
+      # external_url 不含端口时，nginx 监听 80；端口映射 8929:80 供 infra-nginx 使用
+      test: ["CMD-SHELL", "curl -sf http://localhost/-/readiness?all=1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          memory: ${GITLAB_MEMORY_LIMIT:-4g}
+        reservations:
+          memory: ${GITLAB_MEMORY_RESERVATION:-2g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "200m"
+        max-file: "5"

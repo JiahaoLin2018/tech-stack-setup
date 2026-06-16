@@ -1,0 +1,258 @@
+# ============================================================================
+# 聚合项目 CI/CD Pipeline 示例
+#
+# 适用场景：一个 Git 仓库包含多个微服务（如 finance-listener, finance-analysis 等）
+# 特点：
+#   1. 一次构建所有模块，产物通过 cache 传递
+#   2. 每个微服务独立部署，互不影响
+#   3. 使用 YAML anchor 减少重复代码
+# ============================================================================
+
+stages:
+  - jar
+  - deploy
+  - prod_jar
+  - prod_deploy
+
+# CI 编译镜像（随 JAVA_CI_VERSION 变量自动切换）
+# 默认 21（Spring Boot 3.5+）；Spring Boot 2.x 项目在 GitLab 项目级 Variables 中覆盖为 8/11/17
+image: maven:3.9-eclipse-temurin-${JAVA_CI_VERSION}
+
+variables:
+  # JAVA_CI_VERSION：控制 CI 编译 JDK 版本，必须与 Apollo ops.javaVersion 及 pom.xml <java.version> 保持一致
+  # - 在 GitLab 项目级 Variables 中覆盖此值即可切换编译 JDK，无需修改此文件
+  JAVA_CI_VERSION: "21"
+  # 钉钉通知（可选）：填写 Webhook URL 后自动发送部署成功/失败通知，不填则跳过
+  # DINGTALK_WEBHOOK: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+
+# ============================================================================
+# 缓存配置 - 所有模块共享
+# ============================================================================
+.jar_cache: &jar_cache
+  paths:
+    - finance-listener/target/*.jar
+    - finance-analysis/target/*.jar
+    - finance-gateway/target/*.jar
+    - finance-manager/target/*.jar
+    - .m2/repository/
+
+# ============================================================================
+# 开发环境：构建所有模块
+# ============================================================================
+jar:
+  stage: jar
+  tags:
+    - non-prod
+  only:
+    - dev
+  cache:
+    <<: *jar_cache
+    policy: push
+    key: ${CI_COMMIT_REF_NAME}
+  script:
+    - mvn clean install -Dmaven.test.skip=true
+
+# ============================================================================
+# 开发环境：部署模板
+# ============================================================================
+.deploy_template: &deploy_template
+  tags:
+    - non-prod
+  only:
+    - dev
+  cache:
+    <<: *jar_cache
+    policy: pull
+    key: ${CI_COMMIT_REF_NAME}
+  script:
+    - /bin/bash /opt/tech-stack/cicd/app.sh
+  when: manual
+
+# ============================================================================
+# SIT 环境部署 - 4 个微服务
+# ============================================================================
+sit_deploy(listener):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: sit
+  variables:
+    APP_ID: 'tezzolo-finance-listener'
+    APP_SUB_DIR: 'finance-listener'
+
+sit_deploy(analysis):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: sit
+  variables:
+    APP_ID: 'tezzolo-finance-analysis'
+    APP_SUB_DIR: 'finance-analysis'
+
+sit_deploy(gateway):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: sit
+  variables:
+    APP_ID: 'tezzolo-outer-gateway'
+    APP_SUB_DIR: 'finance-gateway'
+
+sit_deploy(manager):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: sit
+  variables:
+    APP_ID: 'tezzolo-finance-manager'
+    APP_SUB_DIR: 'finance-manager'
+
+# ============================================================================
+# FAT 环境部署 - 4 个微服务
+# ============================================================================
+fat_deploy(listener):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fat
+  variables:
+    APP_ID: 'tezzolo-finance-listener'
+    APP_SUB_DIR: 'finance-listener'
+
+fat_deploy(analysis):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fat
+  variables:
+    APP_ID: 'tezzolo-finance-analysis'
+    APP_SUB_DIR: 'finance-analysis'
+
+fat_deploy(gateway):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fat
+  variables:
+    APP_ID: 'tezzolo-outer-gateway'
+    APP_SUB_DIR: 'finance-gateway'
+
+fat_deploy(manager):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fat
+  variables:
+    APP_ID: 'tezzolo-finance-manager'
+    APP_SUB_DIR: 'finance-manager'
+
+# ============================================================================
+# UAT 环境部署 - 4 个微服务
+# ============================================================================
+uat_deploy(listener):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: uat
+  variables:
+    APP_ID: 'tezzolo-finance-listener'
+    APP_SUB_DIR: 'finance-listener'
+
+uat_deploy(analysis):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: uat
+  variables:
+    APP_ID: 'tezzolo-finance-analysis'
+    APP_SUB_DIR: 'finance-analysis'
+
+uat_deploy(gateway):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: uat
+  variables:
+    APP_ID: 'tezzolo-outer-gateway'
+    APP_SUB_DIR: 'finance-gateway'
+
+uat_deploy(manager):
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: uat
+  variables:
+    APP_ID: 'tezzolo-finance-manager'
+    APP_SUB_DIR: 'finance-manager'
+
+# ============================================================================
+# 生产环境：构建所有模块
+# ============================================================================
+prod_jar:
+  stage: prod_jar
+  tags:
+    - prod
+  only:
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  cache:
+    <<: *jar_cache
+    policy: push
+    key: ${CI_COMMIT_REF_NAME}-prod
+  script:
+    - mvn clean install -Dmaven.test.skip=true
+  when: manual
+
+# ============================================================================
+# 生产环境：部署模板
+# ============================================================================
+.prod_deploy_template: &prod_deploy_template
+  tags:
+    - prod
+  only:
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  cache:
+    <<: *jar_cache
+    policy: pull
+    key: ${CI_COMMIT_REF_NAME}-prod
+  script:
+    - /bin/bash /opt/tech-stack/cicd/app.sh
+  when: manual
+
+# ============================================================================
+# 生产环境部署 - 4 个微服务
+# ============================================================================
+prod_deploy(listener):
+  <<: *prod_deploy_template
+  stage: prod_deploy
+  environment:
+    name: prod
+  variables:
+    APP_ID: 'tezzolo-finance-listener'
+    APP_SUB_DIR: 'finance-listener'
+
+prod_deploy(analysis):
+  <<: *prod_deploy_template
+  stage: prod_deploy
+  environment:
+    name: prod
+  variables:
+    APP_ID: 'tezzolo-finance-analysis'
+    APP_SUB_DIR: 'finance-analysis'
+
+prod_deploy(gateway):
+  <<: *prod_deploy_template
+  stage: prod_deploy
+  environment:
+    name: prod
+  variables:
+    APP_ID: 'tezzolo-outer-gateway'
+    APP_SUB_DIR: 'finance-gateway'
+
+prod_deploy(manager):
+  <<: *prod_deploy_template
+  stage: prod_deploy
+  environment:
+    name: prod
+  variables:
+    APP_ID: 'tezzolo-finance-manager'
+    APP_SUB_DIR: 'finance-manager'

@@ -1,0 +1,108 @@
+# tech-stack 局域网域名映射 — 直连域名（hosts.lan）
+#
+# 职责说明：
+#   只维护需要"直接 TCP 连接"的基础设施域名。
+#   通过 infra-nginx HTTP 代理访问的域名（gitlab/nexus/harbor/grafana/apollo 等）
+#   不写此文件，由 dnsmasq.conf 的泛解析自动兜底到 infra-nginx。
+#
+# 修改后重启生效：docker restart tech-dns
+#
+# 多机扩展：将对应域名的 CHANGE_ME_*_IP 改为目标机器的实际 IP 即可
+#
+# ----------------------------------------------------------------------
+# 蓝图 v1.9.0 必备域名清单（共 37 条，缺一不可）：
+#
+#   ④ 环境级直连（5 服务 × 5 环境 = 25 条）
+#     mysql-{dev,sit,fat,uat,prod}.renew.com
+#     redis-{dev,sit,fat,uat,prod}.renew.com
+#     mongodb-{dev,sit,fat,uat,prod}.renew.com
+#     rabbitmq-{dev,sit,fat,uat,prod}.renew.com
+#     consul-{dev,sit,fat,uat,prod}.renew.com
+#
+#   ② 域级直连数据端口（6 服务 × 2 域 = 12 条）
+#     otel-{nonprod,prod}.renew.com
+#     loki-{nonprod,prod}.renew.com
+#     tempo-{nonprod,prod}.renew.com
+#     prometheus-{nonprod,prod}.renew.com
+#     alertmanager-{nonprod,prod}.renew.com
+#     k3s-{nonprod,prod}.renew.com
+#
+# 不在 hosts.lan 的域名（全部由泛解析 → infra-nginx 反代覆盖，不要写此文件）：
+#   ① 全局唯一：gitlab / nexus / harbor / dns
+#   ② 域级共用 UI：grafana-{nonprod|prod}-ui / prometheus-{nonprod|prod}-ui / alertmanager-{nonprod|prod}-ui
+#   ③ 非生产独有：apollo.renew.com
+#   ④ 环境级 UI：consul-{env}-ui / rabbitmq-{env}-ui
+#   ④ Apollo Config：apollo-config-{env}.renew.com
+#   ④ 业务应用：*.{env}.web/api.renew.com
+# ----------------------------------------------------------------------
+
+# ============================
+# ④ 环境级直连 — 中间件
+#    {service}-{env}.renew.com → Pod/微服务直连数据端口
+#    Web UI 访问走 {service}-{env}-ui.renew.com（泛解析→infra-nginx，无需写此文件）
+# ============================
+
+# ---------- MySQL（业务数据库，直连 :3306）----------
+CHANGE_ME_MYSQL_DEV_IP    mysql-dev.renew.com
+CHANGE_ME_MYSQL_SIT_IP    mysql-sit.renew.com
+CHANGE_ME_MYSQL_FAT_IP    mysql-fat.renew.com
+CHANGE_ME_MYSQL_UAT_IP    mysql-uat.renew.com
+CHANGE_ME_MYSQL_PROD_IP   mysql-prod.renew.com
+
+# ---------- Redis（缓存/分布式锁/会话，直连 :6379）----------
+CHANGE_ME_REDIS_DEV_IP    redis-dev.renew.com
+CHANGE_ME_REDIS_SIT_IP    redis-sit.renew.com
+CHANGE_ME_REDIS_FAT_IP    redis-fat.renew.com
+CHANGE_ME_REDIS_UAT_IP    redis-uat.renew.com
+CHANGE_ME_REDIS_PROD_IP   redis-prod.renew.com
+
+# ---------- MongoDB（文档数据库，直连 :27017）----------
+CHANGE_ME_MONGODB_DEV_IP   mongodb-dev.renew.com
+CHANGE_ME_MONGODB_SIT_IP   mongodb-sit.renew.com
+CHANGE_ME_MONGODB_FAT_IP   mongodb-fat.renew.com
+CHANGE_ME_MONGODB_UAT_IP   mongodb-uat.renew.com
+CHANGE_ME_MONGODB_PROD_IP  mongodb-prod.renew.com
+
+# ---------- RabbitMQ（AMQP 直连 :5672；管理 UI 走泛解析）----------
+CHANGE_ME_RABBITMQ_DEV_IP  rabbitmq-dev.renew.com
+CHANGE_ME_RABBITMQ_SIT_IP  rabbitmq-sit.renew.com
+CHANGE_ME_RABBITMQ_FAT_IP  rabbitmq-fat.renew.com
+CHANGE_ME_RABBITMQ_UAT_IP  rabbitmq-uat.renew.com
+CHANGE_ME_RABBITMQ_PROD_IP rabbitmq-prod.renew.com
+
+# ---------- Consul（服务注册发现 API 直连 :8500；UI 走泛解析）----------
+CHANGE_ME_CONSUL_DEV_IP    consul-dev.renew.com
+CHANGE_ME_CONSUL_SIT_IP    consul-sit.renew.com
+CHANGE_ME_CONSUL_FAT_IP    consul-fat.renew.com
+CHANGE_ME_CONSUL_UAT_IP    consul-uat.renew.com
+CHANGE_ME_CONSUL_PROD_IP   consul-prod.renew.com
+
+# ============================
+# ② 域级直连 — 可观测性数据端口
+#    {service}-{nonprod|prod}.renew.com → 微服务/OTel 直连数据端口
+#    Web UI 访问走 {service}-{nonprod|prod}-ui.renew.com（泛解析→infra-nginx）
+# ============================
+
+# ---------- OTel Collector（微服务推送 OTLP gRPC :4317 / HTTP :4318）----------
+CHANGE_ME_OTEL_NONPROD_IP   otel-nonprod.renew.com
+CHANGE_ME_OTEL_PROD_IP      otel-prod.renew.com
+
+# ---------- Loki（OTel Collector 推送日志 :3100）----------
+CHANGE_ME_LOKI_NONPROD_IP   loki-nonprod.renew.com
+CHANGE_ME_LOKI_PROD_IP      loki-prod.renew.com
+
+# ---------- Tempo（OTel Collector 推送链路追踪 :14317 gRPC / :14318 HTTP，Grafana 查询 :3200）----------
+CHANGE_ME_TEMPO_NONPROD_IP  tempo-nonprod.renew.com
+CHANGE_ME_TEMPO_PROD_IP     tempo-prod.renew.com
+
+# ---------- Prometheus（OTel Collector 推送指标 / Grafana 查询 :9090）----------
+CHANGE_ME_PROMETHEUS_NONPROD_IP   prometheus-nonprod.renew.com
+CHANGE_ME_PROMETHEUS_PROD_IP      prometheus-prod.renew.com
+
+# ---------- Alertmanager（Prometheus alerting 推送 / Loki ruler 推送 :9093）----------
+CHANGE_ME_ALERTMANAGER_NONPROD_IP  alertmanager-nonprod.renew.com
+CHANGE_ME_ALERTMANAGER_PROD_IP     alertmanager-prod.renew.com
+
+# ---------- K3s 内部网关（edge-nginx / infra-nginx 转发目标 :8083）----------
+CHANGE_ME_K3S_NONPROD_IP    k3s-nonprod.renew.com
+CHANGE_ME_K3S_PROD_IP       k3s-prod.renew.com

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K3s Demo - Frontend</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 48px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+        .status {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        .info {
+            background: #f3f4f6;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: left;
+            margin-top: 24px;
+        }
+        .info p {
+            color: #6b7280;
+            font-size: 14px;
+            margin: 8px 0;
+        }
+        .info strong {
+            color: #374151;
+        }
+        .api-test {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid #e5e7eb;
+        }
+        .api-test button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .api-test button:hover {
+            background: #5a67d8;
+        }
+        .api-result {
+            margin-top: 16px;
+            padding: 12px;
+            background: #f9fafb;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            text-align: left;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 K3s Demo</h1>
+        <span class="status">✓ Running</span>
+        <p>前端服务已成功部署到 K3s 集群</p>
+
+        <div class="info">
+            <p><strong>服务:</strong> demo-frontend</p>
+            <p><strong>环境:</strong> FAT</p>
+            <p><strong>域名:</strong> demo.fat.web.renew.com</p>
+            <p><strong>时间:</strong> <span id="time"></span></p>
+        </div>
+
+        <div class="api-test">
+            <p style="margin-bottom: 12px; color: #6b7280;">测试后端 API 连通性:</p>
+            <button onclick="testApi()">调用 Backend API</button>
+            <div class="api-result" id="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        // 显示当前时间
+        document.getElementById('time').textContent = new Date().toLocaleString('zh-CN');
+
+        // 测试后端 API
+        function testApi() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = '请求中...';
+
+            fetch('/api/')
+                .then(response => response.json())
+                .then(data => {
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                })
+                .catch(error => {
+                    resultDiv.textContent = '错误: ' + error.message;
+                });
+        }
+    </script>
+</body>
+</html>

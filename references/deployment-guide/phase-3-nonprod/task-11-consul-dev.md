@@ -1,0 +1,64 @@
+# Task 11 — Consul Dev 部署
+
+> 部署 Dev 环境 Consul（K3s 外部独立 Docker Compose）。对应 architecture-blueprint.md 第五部分阶段三 3-5。
+
+## 前置条件
+
+| 条件 | 说明 |
+|------|------|
+| 前置 task | task-01（DNS）+ task-02（infra-nginx） |
+| 端口 | :8500（HTTP API + UI） / :8600/udp（DNS 接口） |
+| 反代规则 | infra-nginx 已预配置 `consul-dev-ui.renew.com` |
+
+## 架构约束
+
+- A 类环境级完全独立
+- 单节点模式（dev/sit/fat/uat 共用），生产环境（task-40）必须开启 ACL + Gossip 加密
+- 作为 setup-prometheus consul_sd 的服务发现源
+- 业务 Spring Boot 注册时必须打 `metrics` tag（供 Prometheus 发现）
+
+## 关键配置
+
+| 变量 / 配置点 | dev 值 |
+|------|--------|
+| `CONSUL_ENV`（.env） | `dev` |
+| `CONSUL_HTTP_PORT`（.env） | `8500` |
+| `CONSUL_DNS_PORT`（.env） | `8600` |
+| `CONSUL_LOG_LEVEL`（.env） | `WARN`（dev/sit 排障可改 INFO/DEBUG） |
+| ACL 启用（`conf/consul.hcl.tpl`）| 在 `conf/consul.hcl.tpl` 中按需启用 |
+| Gossip 加密（`conf/consul.hcl.tpl`）| 可选（推荐） |
+| 容器内存 | 512m |
+
+## 部署命令
+
+```bash
+/setup-consul start --host <CONSUL_DEV_IP> --env dev --user <USER> --password <PASS>
+/setup-consul verify --host <CONSUL_DEV_IP> --env dev --user <USER> --password <PASS>
+```
+
+## 验证标准
+
+- [ ] `curl http://consul-dev.renew.com:8500/v1/status/leader` 返回当前 leader
+- [ ] `http://consul-dev-ui.renew.com` UI 可访问（infra-nginx 反代）
+- [ ] DNS 接口可用：`dig @<CONSUL_DEV_IP> -p 8600 consul.service.consul`
+
+## 资源建议
+
+| 内存 | CPU | 磁盘 |
+|------|-----|------|
+| 512 MB | 0.5 核 | 20 GB |
+
+## 并行说明
+
+与 Dev 其他中间件（task-07/08/09/10）完全并行。
+
+## 注意事项
+
+- 业务 Pod 注册到 Consul 时必须包含 `metrics` tag，否则 task-30 Prometheus consul_sd 不会发现
+- 直连域名走 hosts.lan，UI 域名走泛解析→infra-nginx
+- infra-nginx `40-consul-ui.conf` 需 `CONSUL_DEV_HOST` 变量
+
+## 后续步骤
+
+- 密码记录到 `env/consul-dev.md`（如启用 ACL）
+- task-30 通过 `consul-dev.renew.com:8500` 做 consul_sd 发现 spring-boot-dev 服务

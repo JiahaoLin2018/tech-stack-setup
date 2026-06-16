@@ -1,0 +1,169 @@
+# ============================================================================
+# Tech Stack CI/CD Pipeline
+#
+# 设计原则：
+#   1. 先打包后部署：jar/stages 分离，构建产物通过 cache 传递
+#   2. 环境隔离：dev 分支 → sit/fat/uat，tag → prod
+#   3. 手动触发：所有部署 job 需手动确认
+#   4. YAML anchor 减少重复代码
+#
+# 变量说明：
+#   - APP_ID: 应用 ID（对应 Apollo 配置的 appId）
+#   - APP_SUB_DIR: 子模块目录（聚合项目使用）
+#   - CI_COMMIT_REF_NAME: GitLab 内置变量，当前分支或 tag 名称
+# ============================================================================
+
+stages:
+  - jar
+  - deploy
+  - prod_jar
+  - prod_deploy
+  - notify
+
+# CI 编译镜像（随 JAVA_CI_VERSION 变量自动切换）
+# 默认 21（Spring Boot 3.5+）；Spring Boot 2.x 项目在 GitLab 项目级 Variables 中覆盖为 8/11/17
+image: maven:3.9-eclipse-temurin-${JAVA_CI_VERSION}
+
+variables:
+  # JAVA_CI_VERSION：控制 CI 编译 JDK 版本，必须与 Apollo ops.javaVersion 及 pom.xml <java.version> 保持一致
+  # - 在 GitLab 项目级 Variables 中覆盖此值即可切换编译 JDK，无需修改此文件
+  JAVA_CI_VERSION: "21"
+  # 钉钉通知（可选）：填写 Webhook URL 后自动发送部署成功/失败通知，不填则跳过
+  # DINGTALK_WEBHOOK: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+
+# ============================================================================
+# 缓存模板定义
+# ============================================================================
+.jar_paths: &jar_paths
+  paths:
+    - target/*.jar
+    - .m2/repository/
+
+# ============================================================================
+# 开发环境：构建阶段
+# ============================================================================
+jar:
+  stage: jar
+  tags:
+    - non-prod
+  only:
+    - dev
+  cache:
+    <<: *jar_paths
+    policy: push
+    key: ${CI_COMMIT_REF_NAME}
+  script:
+    - mvn clean install -Dmaven.test.skip=true
+
+# ============================================================================
+# 开发环境：部署模板
+# ============================================================================
+.deploy_template: &deploy_template
+  tags:
+    - non-prod
+  only:
+    - dev
+  cache:
+    <<: *jar_paths
+    policy: pull
+    key: ${CI_COMMIT_REF_NAME}
+  script:
+    - /bin/bash /opt/tech-stack/cicd/app.sh
+  when: manual
+
+# SIT 环境部署
+sit_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: sit
+  variables:
+    APP_ID: '${APP_ID}'
+    APP_SUB_DIR: '${APP_SUB_DIR}'
+
+# FAT 环境部署
+fat_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fat
+  variables:
+    APP_ID: '${APP_ID}'
+    APP_SUB_DIR: '${APP_SUB_DIR}'
+
+# UAT 环境部署
+uat_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: uat
+  variables:
+    APP_ID: '${APP_ID}'
+    APP_SUB_DIR: '${APP_SUB_DIR}'
+
+# ============================================================================
+# 生产环境：构建阶段（独立 Runner，更安全）
+# ============================================================================
+prod_jar:
+  stage: prod_jar
+  tags:
+    - prod
+  only:
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  cache:
+    <<: *jar_paths
+    policy: push
+    key: ${CI_COMMIT_REF_NAME}-prod
+  script:
+    - mvn clean install -Dmaven.test.skip=true
+  when: manual
+
+# ============================================================================
+# 生产环境：部署模板
+# ============================================================================
+.prod_deploy_template: &prod_deploy_template
+  tags:
+    - prod
+  only:
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  cache:
+    <<: *jar_paths
+    policy: pull
+    key: ${CI_COMMIT_REF_NAME}-prod
+  script:
+    - /bin/bash /opt/tech-stack/cicd/app.sh
+  when: manual
+
+prod_deploy:
+  <<: *prod_deploy_template
+  stage: prod_deploy
+  environment:
+    name: prod
+  variables:
+    APP_ID: '${APP_ID}'
+    APP_SUB_DIR: '${APP_SUB_DIR}'
+
+# ============================================================================
+# 通知阶段
+# ============================================================================
+notify_success:
+  stage: notify
+  tags:
+    - non-prod
+  only:
+    - dev
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  when: on_success
+  script:
+    - echo "[SUCCESS] ${APP_ID} deployed to ${CI_ENVIRONMENT_NAME}"
+
+notify_failure:
+  stage: notify
+  tags:
+    - non-prod
+  only:
+    - dev
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  when: on_failure
+  script:
+    - echo "[FAILED] ${APP_ID} deployment failed"

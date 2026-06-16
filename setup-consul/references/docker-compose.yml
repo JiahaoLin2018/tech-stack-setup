@@ -1,0 +1,37 @@
+services:
+  consul:
+    image: hashicorp/consul:1.20
+    container_name: tech-consul-${CONSUL_ENV:-dev}
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "${CONSUL_HTTP_PORT:-8500}:8500"
+      - "${CONSUL_DNS_PORT:-8600}:8600/udp"
+      # 集群模式时启用以下端口（单节点 bootstrap 不需要）：
+      # - "8300:8300"          # Server RPC
+      # - "8301:8301"          # Serf LAN gossip TCP
+      # - "8301:8301/udp"      # Serf LAN gossip UDP
+      # - "8302:8302"          # Serf WAN gossip TCP
+      # - "8302:8302/udp"      # Serf WAN gossip UDP
+    command: agent -config-dir=/consul/config
+    volumes:
+      - ./data:/consul/data
+      - ./conf/consul.hcl:/consul/config/consul.hcl:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "consul", "operator", "raft", "list-peers"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

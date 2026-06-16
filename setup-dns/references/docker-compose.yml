@@ -1,0 +1,30 @@
+services:
+  dns:
+    image: jpillora/dnsmasq:latest
+    container_name: tech-dns
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./dnsmasq.conf:/etc/dnsmasq.conf:ro
+      - ./hosts.lan:/etc/hosts.lan:ro
+    environment:
+      PORT: ${DNS_WEB_PORT:-5380}
+      HTTP_USER: ${DNS_WEB_USER:-admin}
+      HTTP_PASS: ${DNS_WEB_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+        reservations:
+          memory: 32m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "nslookup", "localhost", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

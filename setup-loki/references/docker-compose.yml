@@ -1,0 +1,37 @@
+services:
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: tech-loki-${ENV:-nonprod}
+    restart: unless-stopped
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    environment:
+      - LOKI_RETENTION_PERIOD=${LOKI_RETENTION_PERIOD:-168h}
+      - LOKI_COMPACTION_INTERVAL=${LOKI_COMPACTION_INTERVAL:-10m}
+      - LOKI_RETENTION_DELETE_DELAY=${LOKI_RETENTION_DELETE_DELAY:-2h}
+      - LOKI_INGESTION_RATE_MB=${LOKI_INGESTION_RATE_MB:-10}
+      - LOKI_INGESTION_BURST_SIZE_MB=${LOKI_INGESTION_BURST_SIZE_MB:-20}
+      - LOKI_MAX_STREAMS_PER_USER=${LOKI_MAX_STREAMS_PER_USER:-10000}
+      - LOKI_MAX_QUERY_SERIES=${LOKI_MAX_QUERY_SERIES:-500}
+      - LOKI_CACHE_MAX_SIZE_MB=${LOKI_CACHE_MAX_SIZE_MB:-100}
+      - LOKI_GRPC_PORT=${LOKI_GRPC_PORT:-9096}
+      - LOKI_LOG_LEVEL=${LOKI_LOG_LEVEL:-info}
+    volumes:
+      - ./conf/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - ./data/loki:/loki
+    command: -config.file=/etc/loki/local-config.yaml -config.expand-env=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${LOKI_MEMORY_LIMIT:-1g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"

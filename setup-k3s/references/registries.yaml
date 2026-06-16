@@ -1,0 +1,18 @@
+# K3s 镜像加速配置
+#
+# 国内网络通常无法直接访问 Docker Hub，需配置镜像加速器
+# Harbor 通过 infra-nginx 代理提供服务，统一使用域名（无端口）访问
+#
+# 文件位置: /etc/rancher/k3s/registries.yaml
+#
+mirrors:
+  # Docker Hub 镜像加速
+  docker.io:
+    endpoint:
+      - "https://docker.1ms.run"
+      - "https://docker.m.daocloud.io"
+  # Harbor 私有仓库（通过 infra-nginx 代理，HTTP :80）
+  # K3s 默认使用 HTTPS 443 端口连接镜像仓库，需显式指定 HTTP 地址
+  harbor.renew.com:
+    endpoint:
+      - "http://harbor.renew.com"

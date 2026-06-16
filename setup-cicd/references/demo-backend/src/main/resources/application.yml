@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: demo-backend
+  cloud:
+    consul:
+      discovery:
+        enabled: false
+        register: false
+
+app:
+  id: demo-backend
+
+apollo:
+  meta: http://apollo.renew.com:8080
+  bootstrap:
+    enabled: true
+    namespaces: tech.common
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

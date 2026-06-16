@@ -1,0 +1,73 @@
+services:
+  mongodb:
+    image: ${MONGO_IMAGE:-mongo:8.0}
+    container_name: tech-mongodb-${ENV:-dev}
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_APP_DATABASE:-appdb}
+      MONGO_APP_USER: ${MONGO_APP_USER:-appuser}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+      TZ: Asia/Shanghai
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - ./data:/data/db
+      - ./conf/mongod.conf:/etc/mongod.conf:ro
+      - ./init/01_create_app_user.js:/docker-entrypoint-initdb.d/01_create_app_user.js:ro
+    command: >-
+      mongod --config /etc/mongod.conf
+      --wiredTigerCacheSizeGB ${MONGO_CACHE_SIZE_GB:-1}
+      --maxConns ${MONGO_MAX_CONNECTIONS:-500}
+      --slowms ${MONGO_SLOW_OP_THRESHOLD_MS:-200}
+    deploy:
+      resources:
+        limits:
+          memory: ${MONGO_MEMORY_LIMIT:-2g}
+        reservations:
+          memory: ${MONGO_MEMORY_RESERVATION:-512m}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${MONGO_LOG_MAX_SIZE:-100m}
+        max-file: ${MONGO_LOG_MAX_FILE:-5}
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.43.1
+    container_name: tech-mongodb-exporter-${ENV:-dev}
+    restart: unless-stopped
+    environment:
+      # 使用专用 exporter 用户（clusterMonitor + read on local），不使用 root
+      MONGODB_URI: "mongodb://${MONGO_EXPORTER_USER:-exporter}:${MONGO_EXPORTER_PASSWORD}@mongodb:27017/admin?authSource=admin"
+    ports:
+      - "${MONGODB_EXPORTER_PORT:-9216}:9216"
+    command:
+      - '--mongodb.global-conn-pool'
+      - '--discovering-mode'
+      - '--compatible-mode'
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # percona/mongodb_exporter 是最小化镜像，无 /bin/sh 和 wget，不能用 CMD-SHELL
+      test: ["CMD", "/mongodb_exporter", "--version"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

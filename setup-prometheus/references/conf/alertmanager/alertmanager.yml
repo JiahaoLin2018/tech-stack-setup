@@ -1,0 +1,23 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'job']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+
+receivers:
+  - name: 'default'
+    # 配置通知渠道（钉钉/邮件/Webhook），取消注释并填写配置
+    # webhook_configs:
+    #   - url: 'http://dingtalk-webhook/notify'
+    #     send_resolved: true
+
+inhibit_rules:
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname']

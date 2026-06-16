@@ -1,0 +1,3 @@
+user default on >__REDIS_PASSWORD__ ~* &* +@all
+user app on >__REDIS_APP_PASSWORD__ ~* &* +@all -@admin -flushdb -flushall -shutdown -debug -replicaof -slaveof -migrate -module -save -bgsave -bgrewriteaof -restore -swapdb
+user exporter on >__REDIS_EXPORTER_PASSWORD__ ~* &* -@all +ping +info +select +dbsize +type +scan +slowlog +latency +config +client +cluster +memory +command +time

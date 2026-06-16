@@ -1,0 +1,39 @@
+services:
+  gitlab-runner:
+    # 使用内网 Harbor 镜像（需先 docker login 或配置 insecure-registries: ["harbor.renew.com"]）
+    image: harbor.renew.com/library/gitlab-runner:alpine
+    # 容器名由 .env 中 RUNNER_ENV 决定：tech-gitlab-runner-nonprod 或 tech-gitlab-runner-prod
+    container_name: tech-gitlab-runner-${RUNNER_ENV}
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      # Runner 并发数（同时执行的作业数）
+      REGISTER_NON_INTERACTIVE: "true"
+    volumes:
+      - ./config:/etc/gitlab-runner
+      # 挂载宿主机 Docker socket，支持 CI 作业构建镜像
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 缓存目录（可选，用于加速构建）
+      - ./cache:/cache
+      # CI/CD 环境：kubeconfig、部署脚本、Maven 配置
+      - /opt/tech-stack/cicd/kubeconfig:/opt/tech-stack/cicd/kubeconfig:ro
+      - /opt/tech-stack/cicd/app.sh:/opt/tech-stack/cicd/app.sh:ro
+      - /opt/tech-stack/cicd/settings.xml:/opt/tech-stack/cicd/settings.xml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      # 使用 --version 而非 verify，因为 verify 需要已注册的 Runner，注册前会一直 unhealthy
+      test: ["CMD", "gitlab-runner", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

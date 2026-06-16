@@ -1,0 +1,36 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: tech-rabbitmq-${ENV:-dev}
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+      - "${RABBITMQ_PROMETHEUS_PORT:-15692}:15692"
+    volumes:
+      - ./data:/var/lib/rabbitmq
+      - ./conf/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./conf/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./init:/init:ro
+    deploy:
+      resources:
+        limits:
+          memory: ${RABBITMQ_MEMORY_LIMIT:-1g}
+        reservations:
+          memory: ${RABBITMQ_MEMORY_RESERVATION:-256m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

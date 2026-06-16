@@ -1,0 +1,7 @@
+# SSL 证书目录
+# 请将证书文件上传到此目录：
+#   - fullchain.pem（证书链）
+#   - privkey.pem（私钥）
+#
+# 上传命令：
+#   scp fullchain.pem privkey.pem root@<host>:/opt/tech-stack/edge-nginx-{env}/ssl/

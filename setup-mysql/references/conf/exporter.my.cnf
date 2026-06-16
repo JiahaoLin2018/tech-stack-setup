@@ -1,0 +1,8 @@
+# mysqld-exporter 连接配置
+# 使用专用 exporter 用户，权限仅为 PROCESS + REPLICATION CLIENT + SELECT
+# 该用户由 init/01_create_app_user.sql 初始化脚本自动创建
+[client]
+user=exporter
+password=CHANGE_ME_EXPORTER_PASSWORD
+host=mysql
+port=3306

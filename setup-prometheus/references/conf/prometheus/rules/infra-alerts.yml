@@ -1,0 +1,251 @@
+groups:
+  # ===== 容器级告警（需部署 cAdvisor 才可用） =====
+  # 以下规则依赖 cAdvisor 暴露的指标，如需启用请先部署 cAdvisor
+  # - name: container
+  #   rules:
+  #     - alert: ContainerHighMemoryUsage
+  #       expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.85
+  #       for: 5m
+  #       labels:
+  #         severity: warning
+  #       annotations:
+  #         summary: "容器 {{ $labels.name }} 内存使用率超过 85%"
+  #
+  #     - alert: ContainerHighCpuUsage
+  #       expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+  #       for: 5m
+  #       labels:
+  #         severity: warning
+  #       annotations:
+  #         summary: "容器 {{ $labels.name }} CPU 使用率过高"
+  #
+  #     - alert: ContainerRestarting
+  #       expr: increase(container_restart_count[1h]) > 3
+  #       for: 0m
+  #       labels:
+  #         severity: critical
+  #       annotations:
+  #         summary: "容器 {{ $labels.name }} 频繁重启"
+
+  - name: spring-boot-applications
+    rules:
+      # ===== Spring Boot 应用告警 =====
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务 {{ $labels.job }} 实例 {{ $labels.instance }} 宕机"
+          description: "目标不可达超过 1 分钟"
+
+      - alert: HighHttpErrorRate
+        expr: |
+          sum by (job, uri) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+          / sum by (job, uri) (rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务 {{ $labels.job }} 接口 {{ $labels.uri }} 5xx 错误率超过 5%"
+          description: "当前错误率 {{ $value | humanizePercentage }}"
+
+      - alert: HighHttpLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (job, le) (rate(http_server_requests_seconds_bucket[5m]))
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "服务 {{ $labels.job }} P95 延迟超过 2 秒"
+          description: "当前 P95 延迟 {{ $value | humanizeDuration }}"
+
+      - alert: JvmHeapHighUsage
+        expr: |
+          jvm_memory_used_bytes{area="heap"}
+          / jvm_memory_max_bytes{area="heap"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "服务 {{ $labels.job }} JVM 堆内存使用率超过 85%"
+          description: "当前使用率 {{ $value | humanizePercentage }}"
+
+      - alert: HighGcPauseTime
+        expr: |
+          rate(jvm_gc_pause_seconds_sum[5m])
+          / rate(jvm_gc_pause_seconds_count[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "服务 {{ $labels.job }} GC 暂停时间过长"
+          description: "平均 GC 暂停 {{ $value | humanizeDuration }}"
+
+  - name: observability-infra
+    rules:
+      # ===== OTel Collector（内置指标） =====
+      - alert: OtelCollectorExporterFailures
+        expr: rate(otelcol_exporter_send_failed_spans_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTel Collector exporter {{ $labels.exporter }} 发送 span 失败"
+          description: "过去 5 分钟失败速率 {{ $value }}/s"
+
+      - alert: OtelCollectorExporterLogFailures
+        expr: rate(otelcol_exporter_send_failed_log_records_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTel Collector exporter {{ $labels.exporter }} 发送日志失败"
+          description: "过去 5 分钟失败速率 {{ $value }}/s"
+
+      - alert: OtelCollectorReceiverRefused
+        expr: rate(otelcol_receiver_refused_spans_total[5m]) > 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTel Collector receiver {{ $labels.receiver }} 拒绝 span"
+          description: "过去 5 分钟拒绝速率 {{ $value }}/s，可能是背压或配置问题"
+
+      # ===== Loki（内置指标） =====
+      - alert: LokiRequestErrors
+        expr: |
+          sum by (route) (rate(loki_request_duration_seconds_count{status_code=~"5.."}[5m]))
+          / sum by (route) (rate(loki_request_duration_seconds_count[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loki 路由 {{ $labels.route }} 错误率超过 10%"
+          description: "当前错误率 {{ $value | humanizePercentage }}"
+
+      - alert: LokiIngesterHighFlushLatency
+        expr: histogram_quantile(0.99, sum by (le) (rate(loki_ingester_chunk_encode_time_seconds_bucket[5m]))) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loki ingester chunk 编码 P99 延迟超过 5 秒"
+          description: "当前 P99 延迟 {{ $value | humanizeDuration }}"
+
+      # ===== Tempo（内置指标） =====
+      - alert: TempoDistributorSpansRejected
+        expr: rate(tempo_distributor_spans_rejected_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tempo distributor 拒绝 span"
+          description: "过去 5 分钟拒绝速率 {{ $value }}/s，可能是限流或配置问题"
+
+      - alert: TempoIngesterHighFlushErrors
+        expr: rate(tempo_ingester_flush_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tempo ingester flush 错误"
+          description: "数据块刷新失败，可能导致 trace 数据丢失"
+
+      - alert: TempoCompactorErrors
+        expr: rate(tempo_compactor_errors_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tempo compactor 压缩错误"
+          description: "数据压缩失败，可能影响存储效率"
+
+  - name: middleware
+    rules:
+      # ===== MySQL（mysqld_exporter，setup-mysql 已集成） =====
+      - alert: MysqlConnectionsHigh
+        expr: mysql_global_status_threads_connected / mysql_global_variables_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MySQL 连接数使用率超过 80%"
+          description: "当前连接数 {{ $value | humanizePercentage }}"
+
+      - alert: MysqlSlowQueries
+        expr: rate(mysql_global_status_slow_queries[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MySQL 慢查询增加"
+          description: "每秒慢查询数 {{ $value }}"
+
+      # ===== Redis（redis_exporter，setup-redis 已集成） =====
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis 内存使用率超过 85%"
+          description: "当前使用率 {{ $value | humanizePercentage }}"
+
+      - alert: RedisHighKeyEviction
+        expr: rate(redis_evicted_keys_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis Key 驱逐频率过高"
+          description: "每秒驱逐 {{ $value }} 个 key"
+
+      # ===== RabbitMQ（RabbitMQ 4.0 内置 Prometheus 指标） =====
+      - alert: RabbitmqQueueBacklog
+        expr: rabbitmq_queue_messages_ready > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ 队列 {{ $labels.queue }} 积压超过 10000 条"
+          description: "当前积压 {{ $value }} 条消息"
+
+      - alert: RabbitmqHighMemory
+        expr: rabbitmq_process_resident_memory_bytes / rabbitmq_resident_memory_limit_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ 内存使用率超过 80%"
+          description: "当前使用率 {{ $value | humanizePercentage }}"
+
+      # ===== MongoDB（mongodb_exporter，setup-mongodb 已集成） =====
+      - alert: MongodbConnectionsHigh
+        expr: mongodb_ss_connections{conn_type="current"} / mongodb_ss_connections{conn_type="available"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MongoDB 连接数使用率超过 80%"
+          description: "当前使用率 {{ $value | humanizePercentage }}"
+
+      - alert: MongodbCacheHighUsage
+        expr: mongodb_ss_wt_cache_bytes_currently_in_the_cache / mongodb_ss_wt_cache_maximum_bytes_configured > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MongoDB WiredTiger 缓存使用率超过 90%"
+          description: "当前使用率 {{ $value | humanizePercentage }}"
+
+      - alert: MongodbReplicationLag
+        expr: mongodb_mongod_replset_member_replication_lag > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MongoDB 复制集延迟超过 10 秒"
+          description: "当前复制延迟 {{ $value }}s"

@@ -1,0 +1,119 @@
+# ============================================================================
+# Demo Backend CI/CD Pipeline
+#
+# 单体项目示例（非聚合项目）
+# 聚合项目示例见 references/.gitlab-ci-aggregated.yml
+# ============================================================================
+
+stages:
+  - jar
+  - deploy
+  - prod_jar
+  - prod_deploy
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  JAVA_HOME: "/usr/lib/jvm/java-21"
+
+before_script:
+  - export PATH=${JAVA_HOME}/bin:${PATH}
+
+# ============================================================================
+# 缓存配置
+# ============================================================================
+.jar_cache: &jar_cache
+  paths:
+    - target/*.jar
+    - .m2/repository/
+
+# ============================================================================
+# 开发环境：构建
+# ============================================================================
+jar:
+  stage: jar
+  tags:
+    - docker
+  only:
+    - dev
+  cache:
+    <<: *jar_cache
+    policy: push
+    key: ${CI_COMMIT_REF_NAME}
+  script:
+    - mvn clean install -Dmaven.test.skip=true
+
+# ============================================================================
+# 开发环境：部署
+# ============================================================================
+.deploy_template: &deploy_template
+  tags:
+    - docker
+  only:
+    - dev
+  cache:
+    <<: *jar_cache
+    policy: pull
+    key: ${CI_COMMIT_REF_NAME}
+  variables:
+    APP_ID: 'demo-backend'
+    APP_SUB_DIR: ''
+  script:
+    - /bin/bash /opt/tech-stack/cicd/app.sh
+  when: manual
+
+fws_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fws
+
+fat_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fat
+
+uat_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: uat
+
+# ============================================================================
+# 生产环境：构建
+# ============================================================================
+prod_jar:
+  stage: prod_jar
+  tags:
+    - prod
+  only:
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  cache:
+    <<: *jar_cache
+    policy: push
+    key: ${CI_COMMIT_REF_NAME}-prod
+  script:
+    - mvn clean install -Dmaven.test.skip=true
+  when: manual
+
+# ============================================================================
+# 生产环境：部署
+# ============================================================================
+prod_deploy:
+  stage: prod_deploy
+  tags:
+    - prod
+  only:
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  cache:
+    <<: *jar_cache
+    policy: pull
+    key: ${CI_COMMIT_REF_NAME}-prod
+  variables:
+    APP_ID: 'demo-backend'
+    APP_SUB_DIR: ''
+  script:
+    - /bin/bash /opt/tech-stack/cicd/app.sh
+  when: manual
+  environment:
+    name: prod

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven Settings for CI/CD Pipeline
+
+  用途：
+  1. 配置本地仓库路径（替代 MAVEN_OPTS=-Dmaven.repo.local）
+  2. 配置 Nexus 私服镜像，加速依赖下载
+  3. 配置 Nexus 认证，支持上传制品
+
+  使用方式：
+  - 由 setup-gitlab-runner start 上传到 Runner 机器 /opt/tech-stack/cicd/settings.xml
+  - GitLab Runner config.toml 挂载到 CI 容器 /root/.m2/settings.xml
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0
+                              http://maven.apache.org/xsd/settings-1.2.0.xsd">
+
+    <!-- CI 环境本地仓库路径，与 .gitlab-ci.yml cache paths 保持一致 -->
+    <localRepository>.m2/repository</localRepository>
+
+    <!-- ============================================================
+         服务器认证配置
+         - id 需与 pom.xml 中 repository/distributionManagement 的 id 一致
+         ============================================================ -->
+    <servers>
+        <!-- Nexus 私服认证（下载依赖 + 发布制品） -->
+        <server>
+            <id>nexus</id>
+            <username>admin</username>
+            <password>CHANGE_ME_NEXUS_PASSWORD</password>
+        </server>
+        <server>
+            <id>nexus-releases</id>
+            <username>admin</username>
+            <password>CHANGE_ME_NEXUS_PASSWORD</password>
+        </server>
+        <server>
+            <id>nexus-snapshots</id>
+            <username>admin</username>
+            <password>CHANGE_ME_NEXUS_PASSWORD</password>
+        </server>
+    </servers>
+
+    <!-- ============================================================
+         镜像配置
+         - mirrorOf="*": 镜像所有仓库请求到 Nexus
+         - Nexus maven-public 聚合了 central/releases/snapshots
+         - URL 经 infra-nginx 代理（nexus.renew.com:80 → 97:8081）
+         ============================================================ -->
+    <mirrors>
+        <mirror>
+            <id>nexus</id>
+            <name>Nexus Maven Mirror</name>
+            <url>http://nexus.renew.com/repository/maven-public/</url>
+            <mirrorOf>*</mirrorOf>
+        </mirror>
+    </mirrors>
+
+</settings>

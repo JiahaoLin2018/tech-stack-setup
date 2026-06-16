@@ -1,0 +1,144 @@
+# ============================================================================
+# Demo Frontend CI/CD Pipeline
+#
+# 前端项目特点：
+#   1. 构建产物：dist/ 目录（npm build 或静态文件）
+#   2. 基础镜像：nginx:1.27-alpine
+#   3. 缓存方式：GitLab Artifacts（前端产物通常较小）
+#   4. 无需 HPA/PDB（静态资源，资源消耗固定）
+#
+# app.sh 从 Apollo 读取配置，自动检测：
+#   - package.json 存在 → Node.js 项目 → 执行 npm build
+#   - package.json 不存在 → 纯静态项目 → 直接打包 dist/
+# ============================================================================
+
+stages:
+  - build
+  - deploy
+  - prod_build
+  - prod_deploy
+
+variables:
+  NODE_VERSION: "20"
+
+before_script:
+  - export PATH=/usr/local/node/v${NODE_VERSION}/bin:${PATH}
+
+# ============================================================================
+# 缓存配置（npm 依赖）
+# ============================================================================
+.npm_cache: &npm_cache
+  paths:
+    - node_modules/
+    - dist/
+  key: ${CI_COMMIT_REF_NAME}
+
+# ============================================================================
+# 开发环境：构建
+# ============================================================================
+build:
+  stage: build
+  tags:
+    - docker
+  only:
+    - dev
+  image: node:20-alpine
+  cache:
+    <<: *npm_cache
+    policy: push
+  script:
+    # 检测是否有 package.json
+    - |
+      if [ -f package.json ]; then
+        echo "[INFO] 检测到 package.json，执行 npm 构建"
+        npm install --registry=https://registry.npmmirror.com
+        npm run build
+      else
+        echo "[INFO] 纯静态项目，复制文件到 dist/"
+        mkdir -p dist
+        cp -r *.html *.css *.js dist/ 2>/dev/null || cp *.html dist/
+      fi
+    - ls -la dist/
+
+# ============================================================================
+# 开发环境：部署模板
+# ============================================================================
+.deploy_template: &deploy_template
+  tags:
+    - docker
+  only:
+    - dev
+  cache:
+    <<: *npm_cache
+    policy: pull
+  variables:
+    APP_ID: 'demo-frontend'
+    APP_SUB_DIR: ''
+  script:
+    - /bin/bash /opt/tech-stack/cicd/app.sh
+  when: manual
+
+fws_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fws
+
+fat_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: fat
+
+uat_deploy:
+  <<: *deploy_template
+  stage: deploy
+  environment:
+    name: uat
+
+# ============================================================================
+# 生产环境：构建
+# ============================================================================
+prod_build:
+  stage: prod_build
+  tags:
+    - prod
+  only:
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  image: node:20-alpine
+  cache:
+    <<: *npm_cache
+    policy: push
+    key: ${CI_COMMIT_REF_NAME}-prod
+  script:
+    - |
+      if [ -f package.json ]; then
+        npm install --registry=https://registry.npmmirror.com
+        npm run build
+      else
+        mkdir -p dist
+        cp -r *.html *.css *.js dist/ 2>/dev/null || cp *.html dist/
+      fi
+  when: manual
+
+# ============================================================================
+# 生产环境：部署
+# ============================================================================
+prod_deploy:
+  stage: prod_deploy
+  tags:
+    - prod
+  only:
+    - /^v[0-9]+\.[0-9]+\.[0-9]+$/
+  cache:
+    <<: *npm_cache
+    policy: pull
+    key: ${CI_COMMIT_REF_NAME}-prod
+  variables:
+    APP_ID: 'demo-frontend'
+    APP_SUB_DIR: ''
+  script:
+    - /bin/bash /opt/tech-stack/cicd/app.sh
+  when: manual
+  environment:
+    name: prod

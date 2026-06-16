@@ -1,0 +1,109 @@
+services:
+  # ================================================================
+  # Apollo 专用 MySQL（生产）
+  # Schema: ApolloConfigDB_prod
+  # 与非生产 Apollo MySQL 完全物理隔离，独立部署于生产网段
+  # ================================================================
+  apollo-db:
+    image: mysql:8.4
+    container_name: tech-apollo-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${APOLLO_DB_ROOT_PASSWORD}
+      TZ: Asia/Shanghai
+    ports:
+      - "${APOLLO_DB_PORT:-3307}:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=512M
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${APOLLO_DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ================================================================
+  # PROD 环境 — Config Service + Admin Service（Apollo 内置环境名 PRO）
+  # DB: ApolloConfigDB_prod | 宿主机端口: Config:8605 / Admin:8615
+  # 访问域名: apollo-config-prod.renew.com（infra-nginx 代理）
+  # ================================================================
+  apollo-config-prod:
+    image: apolloconfig/apollo-configservice:2.5.0
+    container_name: tech-apollo-config-prod
+    restart: unless-stopped
+    depends_on:
+      apollo-db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://apollo-db:3306/ApolloConfigDB_prod?characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${APOLLO_DB_ROOT_PASSWORD}
+      JAVA_OPTS: "-server -Xms256m -Xmx768m -XX:+UseG1GC"
+      TZ: Asia/Shanghai
+    ports:
+      - "${APOLLO_CONFIG_PORT_PROD:-8605}:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  apollo-admin-prod:
+    image: apolloconfig/apollo-adminservice:2.5.0
+    container_name: tech-apollo-admin-prod
+    restart: unless-stopped
+    depends_on:
+      apollo-config-prod:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://apollo-db:3306/ApolloConfigDB_prod?characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${APOLLO_DB_ROOT_PASSWORD}
+      JAVA_OPTS: "-server -Xms256m -Xmx384m -XX:+UseG1GC -Deureka.service.url=http://apollo-config-prod:8080/eureka/"
+      TZ: Asia/Shanghai
+    ports:
+      - "${APOLLO_ADMIN_PORT_PROD:-8615}:8090"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8090/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s

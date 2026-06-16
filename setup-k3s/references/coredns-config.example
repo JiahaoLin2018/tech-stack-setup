@@ -1,0 +1,55 @@
+# CoreDNS 转发配置示例
+# 适用于：K3s 集群内 Pod 解析 *.renew.com 基础设施域名
+#
+# 模板源：references/conf/coredns-custom.yaml.tpl（含 ${DNS_SERVER_IP} 占位）
+# 渲染流程（由 setup-k3s start 自动处理）：
+#   1. 从 references/.env 读取 DNS_SERVER_IP
+#   2. envsubst 渲染：DNS_SERVER_IP=<ip> envsubst < conf/coredns-custom.yaml.tpl > /tmp/coredns-custom.yaml
+#   3. 上传至 /var/lib/rancher/k3s/server/manifests/ 并 kubectl apply
+#
+# 以下是渲染后的实际配置示例：
+
+---
+# 文件路径：/var/lib/rancher/k3s/server/manifests/coredns-custom.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  renew.override: |
+    # 转发 .renew.com 到 dnsmasq
+    # 注：CoreDNS 转发目标使用 IP 是铁律二的合理例外（转发目标本身就是 DNS 服务器）
+    forward renew.com <DNS_SERVER_IP> {
+        policy sequential
+        health_check 10s
+    }
+
+---
+# 验证命令（nonprod 集群）：
+#   kubectl run test-dns --image=busybox:1.36 --rm -it --restart=Never \
+#     -- nslookup mysql-dev.renew.com
+#
+# 预期输出：
+#   Server:    10.96.0.10
+#   Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
+#   Name:      mysql-dev.renew.com
+#   Address 1: <Dev MySQL 节点 IP>
+
+---
+# K3s CoreDNS 默认 Corefile（参考，了解 import 机制）：
+#
+#   .:53 {
+#       errors
+#       health { lameduck 5s }
+#       ready
+#       kubernetes cluster.local in-addr.arpa ip6.arpa { pods insecure }
+#       hosts /etc/coredns/NodeHosts { ttl 60; reload 15s; fallthrough }
+#       prometheus :9153
+#       forward . /etc/resolv.conf
+#       cache 30
+#       loop
+#       reload
+#       loadbalance
+#       import /etc/coredns/custom/*.override    # ← coredns-custom ConfigMap 挂载此目录
+#   }

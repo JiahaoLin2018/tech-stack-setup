@@ -1,0 +1,27 @@
+services:
+  infra-nginx:
+    image: nginx:1.27-alpine
+    container_name: tech-infra-nginx
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./conf/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./conf/nginx/proxy_params:/etc/nginx/proxy_params:ro
+      - ./conf/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./logs:/var/log/nginx
+    healthcheck:
+      # nginx:alpine 内置 busybox wget；不带 curl，避免 healthcheck 报 executable not found
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: '0.5'
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"

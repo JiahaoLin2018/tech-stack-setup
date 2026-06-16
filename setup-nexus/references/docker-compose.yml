@@ -1,0 +1,38 @@
+services:
+  nexus:
+    image: sonatype/nexus3:3.87.0
+    container_name: tech-nexus
+    hostname: ${NEXUS_HOSTNAME:-nexus.renew.com}
+    restart: unless-stopped
+    user: "200"
+    ports:
+      - "${NEXUS_PORT:-8081}:8081"
+      - "${NEXUS_DOCKER_PORT:-8082}:8082"
+    volumes:
+      - ./data:/nexus-data
+    environment:
+      INSTALL4J_ADD_VM_PARAMS: >-
+        -server
+        -Xms${NEXUS_JVM_MIN_HEAP:-1g}
+        -Xmx${NEXUS_JVM_MAX_HEAP:-2g}
+        -XX:MaxDirectMemorySize=${NEXUS_DIRECT_MEMORY:-2g}
+        -XX:+UseG1GC
+        -Xlog:gc*:file=/nexus-data/log/gc.log:time,uptime:filecount=5,filesize=10M
+        -Djava.util.prefs.userRoot=/nexus-data/javaprefs
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+        reservations:
+          memory: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/service/rest/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
